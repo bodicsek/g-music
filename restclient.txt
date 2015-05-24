@@ -1,0 +1,35 @@
+:gmp = http://127.0.0.1:9999
+
+# get the full personal collection
+
+GET :gmp/get_collection
+
+# all personal playlists
+
+GET :gmp/get_all_playlists
+
+# all personal stations
+
+GET :gmp/get_all_stations
+
+# get "I am feeling lucky" station
+
+GET :gmp/get_ifl_station
+
+# search by artist 
+
+GET :gmp/get_by_search?type=matches&artist=mingus&num_tracks=10
+
+# search by title
+
+GET :gmp/get_by_search?type=matches&title=koko&num_tracks=20
+
+# get the top tracks of an artist
+# 1
+
+GET :gmp/search_id?type=artist&artist=Parker
+
+# 2
+
+GET :gmp/get_top_tracks_artist?type=artist&id=Aqlvfz53cioymsoyr3slcgkbsja
+

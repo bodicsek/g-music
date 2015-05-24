@@ -1,9 +1,12 @@
 (source gnu)
 (source melpa)
+(source melpa-stable)
 
-(package-file "g-music.el")
+(package "g-music" "0.0.1" "Support for google music all access")
+(files "*.el")
+(depends-on "request")
 
-(depends-on :git http://tkf.github.io/emacs-request/)
+;; (package-file "g-music.el")
 
 (development
  (depends-on "f")
