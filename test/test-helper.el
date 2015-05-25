@@ -8,3 +8,6 @@
 
 (require 'g-music (f-expand "g-music.el" code-path))
 
+(defun reinit-g-music-db ()
+  (setq *db* nil))
+

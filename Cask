@@ -5,6 +5,7 @@
 (package "g-music" "0.0.1" "Support for google music all access")
 (files "*.el")
 (depends-on "request")
+(depends-on "dash")
 
 ;; (package-file "g-music.el")
 
