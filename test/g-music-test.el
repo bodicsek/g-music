@@ -123,5 +123,19 @@ http://192.168.2.115:9999/get_playlist?id=df2f1c84-3bdb-4420-a656-65e21d9ea3b3
 #EXTINF:-1,Jazz
 http://192.168.2.115:9999/get_playlist?id=594dc46c-77df-4d83-beae-3f3043ad3133"))
     (g-music-extm3u-update-playlists data)
-    (should (equal '("Jazz bonus set 1" "Jazz")
+    (should (equal '("Jazz" "Jazz bonus set 1")
                    (-map 'g-music-db-get-playlist-name *db*)))))
+
+(ert-deftest extm3u-test/g-music-extm3u-update-playlist-content ()
+  "Should update the given playlist's content based on the extm3u data."
+  (let ((playlist (list :plname "pl1" :plurl "http://pl1" :content nil))
+        (data "#EXTM3U
+#EXTINF:192,Count Basie - Blues In Hoss's Flat
+http://192.168.2.115:9999/get_song?id=Twecus4qdtuz3pbsv325jskgk4u
+#EXTINF:307,Charlie Parker - Now's The Time
+http://192.168.2.115:9999/get_song?id=Tjk22ydqo4cvklyoxgcoche4moq"))
+    (g-music-extm3u-update-playlist-content playlist data)
+    (should (equal '("Count Basie - Blues In Hoss's Flat" "Charlie Parker - Now's The Time")
+                   (-map (-lambda ((name . _)) name) (g-music-db-get-playlist-content playlist))))))
+
+  

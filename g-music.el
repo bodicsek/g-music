@@ -85,25 +85,30 @@
   "Keymap for g-music major mode.")
 
 (defun g-music-refresh ()
+  "Reinitializes the cache and redraws the buffer."
   (interactive)
   (request (concat *g-music-proxy-addr* "/get_all_playlists")
            :parser 'buffer-string
            :success (cl-function (lambda (&key data &allow-other-keys)
-                                   (message "Playlist data received.")
                                    (g-music-db-init)
-                                   (message "*db* initialized")
-                                   (g-music-extm3u-map (-lambda ((name url))
-                                                         (g-music-db-set-playlist (g-music-db-create-playlist name url) *db*))
-                                                       (g-music-extm3u-parse data))
-                                   (message "*db* updated")
+                                   (g-music-extm3u-update-playlists data)
                                    (g-music-buffer-setup)))))
 
 (defun g-music-complete ()
+  "Runs the action of the widget at point."
   (interactive)
   (if (widget-at)
       (widget-button-press (point))
     (message "Nothing to do.")))
 
+(defun g-music-refresh-playlist-content (playlist)
+  "Retrieves the content of the given playlist, updates the cache and redraws the buffer."
+  (let ((url (g-music-db-get-playlist-url playlist)))
+    (request url
+             :parser 'buffer-string
+             :success (cl-function (lambda (&key data &allow-other-keys)
+                                     (g-music-extm3u-update-playlist-content playlist data)
+                                     (g-music-buffer-setup))))))
 
 ;; TODO: make the proxy command configurable
 ;; TODO: wait for the process to initialize
@@ -114,7 +119,14 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; extm3u parsing
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defun g-music-extm3u-update-playlist-content (playlist data)
+  "Parses the playlist content extm3u data and updates the given playlist's :content."
+  (let ((content (g-music-extm3u-map (-lambda ((name url)) (cons name url))
+                                     (g-music-extm3u-parse data))))
+    (g-music-db-set-playlist-content playlist content)))
+
 (defun g-music-extm3u-update-playlists (data)
+  "Parses the playlist extm3u data and updates the *db*."
   (g-music-extm3u-map (-lambda ((name url))
                         (g-music-db-set-playlist (g-music-db-create-playlist name url) *db*))
                       (g-music-extm3u-parse data)))
@@ -129,10 +141,10 @@ The function f should have two parameters: name and url."
 So it returns (\"song1\" \"http://song1\")"
   (let ((regex "^#EXTINF:.*[0-9]+,\\(.+\\)
 \\(http.+\\)$"))
-    g-music-match-regex data regex 0))
+    (g-music-match-regex data regex 0)))
 
 (defun g-music-match-regex (str regex start)
-  "Returns all the matching groups of regex in str in a list."
+  "Returns all the matching groups of regex in str as a list."
   (if (string-match-p regex str start)
       (save-match-data
         (string-match regex str start)
@@ -153,7 +165,12 @@ So it returns (\"song1\" \"http://song1\")"
   (remove-overlays)
   (g-music-print-header)
 
-  (cl-map nil 'g-music-create-playlist-widget *db*)
+  (-map (lambda (pl)
+          (let ((content (g-music-db-get-playlist-content pl)))
+            (g-music-create-playlist-widget pl)
+            (when (not (null content))
+              (-map 'g-music-create-playlist-widget content))))
+        *db*)
 
   (widget-setup)
   ;; TODO: preserve point location
@@ -165,18 +182,29 @@ So it returns (\"song1\" \"http://song1\")"
   (widget-insert "\n\n"))
 
 (defun g-music-create-playlist-widget (playlist)
-  (let ((value (g-music-db-get-playlist-name playlist))
-        (tag   (g-music-db-get-playlist-url  playlist)))
+  (let ((value (g-music-db-get-playlist-name playlist)))
     (widget-create 'link
                    :button-prefix ""
                    :button-suffix ""
                    :button-face 'g-music-playlist-face
-                   :format "* %[%v%]\n"
-                   :tag tag
+                   :format "%[%v%]\n"
+                   :tag playlist
                    :help-echo "Expand this playlist"
                    :notify (lambda (widget &rest ignore)
-                             (message "Expanding.."))
-                   value)))
+                             (g-music-refresh-playlist-content (widget-get :tag)))
+                   (concat "* " value))))
+
+(defun g-music-create-song-widget (song)
+  (-let (((name . url) song))
+    (widget-create 'link
+                   :button-prefix ""
+                   :button-suffix ""
+                   :format "%[%v%]\n"
+                   :tag url
+                   :help-echo "Play this song."
+                   :notify (lambda (widget &rest ignore)
+                             (message "Playing song..."))
+                   (concat "  " name))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Major mode setup
