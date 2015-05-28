@@ -91,9 +91,11 @@
   (let ((str "#EXTINF:-1,Jazz bonus set 1
 http://192.168.2.115:9999/get_playlist?id=df2f1c84-3bdb-4420-a656-65e21d9ea3b3")
         (re  "^#EXTINF:.*[0-9]+,\\(.+\\)
-\\(http.+\\)$"))
+\\(http.+\\)$")
+        (result nil))
+    (g-music-match-regex str re (-lambda ((name url)) (cons name (cons url result))))
     (should (equal '("Jazz bonus set 1" "http://192.168.2.115:9999/get_playlist?id=df2f1c84-3bdb-4420-a656-65e21d9ea3b3")
-                   (g-music-match-regex str re 0)))))
+                   result))))
 
 (ert-deftest extm3u-test/g-music-match-regex--two-extm3u-entries ()
   "Should return 4 group matches of 2 extm3u entries"
@@ -102,18 +104,12 @@ http://192.168.2.115:9999/get_playlist?id=df2f1c84-3bdb-4420-a656-65e21d9ea3b3
 #EXTINF:-1,Jazz
 http://192.168.2.115:9999/get_playlist?id=594dc46c-77df-4d83-beae-3f3043ad3133")
         (re  "^#EXTINF:.*[0-9]+,\\(.+\\)
-\\(http.+\\)$"))
+\\(http.+\\)$")
+        (result nil))
+    (g-music-match-regex str re (-lambda ((name url)) (setq result (cons name (cons url result)))))
     (should (equal '("Jazz bonus set 1" "http://192.168.2.115:9999/get_playlist?id=df2f1c84-3bdb-4420-a656-65e21d9ea3b3"
                      "Jazz" "http://192.168.2.115:9999/get_playlist?id=594dc46c-77df-4d83-beae-3f3043ad3133")
-                   (g-music-match-regex str re 0)))))
-
-(ert-deftest extm3u-test/g-music-extm3u-map ()
-  "Should apply the given fn to the result list of the extm3u regex match"
-  (let ((regex-result '("song1" "http://song1" "song2" "http://song2"))        
-        (expected-result (list (list :plname "song1" :plurl "http://song1" :content nil)
-                               (list :plname "song2" :plurl "http://song2" :content nil))))
-        (should (equal expected-result
-                       (g-music-extm3u-map (-lambda ((name url)) (list :plname name :plurl url :content nil)) regex-result)))))
+                   result))))
 
 (ert-deftest extm3u-test/g-music-extm3u-update-playlists ()
   "Should update the global *db* instance from the given extm3u data"

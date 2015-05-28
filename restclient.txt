@@ -10,7 +10,8 @@ GET :gmp/get_all_playlists
 
 # playlist content
 
-GET :gmp/get_playlist?id=df2f1c84-3bdb-4420-a656-65e21d9ea3b3
+#GET :gmp/get_playlist?id=df2f1c84-3bdb-4420-a656-65e21d9ea3b3
+GET http://192.168.2.115:9999/get_playlist?id=594dc46c-77df-4d83-beae-3f3043ad3133
 
 # all personal stations
 

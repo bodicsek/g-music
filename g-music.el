@@ -108,6 +108,7 @@
              :parser 'buffer-string
              :success (cl-function (lambda (&key data &allow-other-keys)
                                      (g-music-extm3u-update-playlist-content playlist data)
+                                     (message "Updating buffer..")
                                      (g-music-buffer-setup))))))
 
 ;; TODO: make the proxy command configurable
@@ -121,38 +122,34 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defun g-music-extm3u-update-playlist-content (playlist data)
   "Parses the playlist content extm3u data and updates the given playlist's :content."
-  (let ((content (g-music-extm3u-map (-lambda ((name url)) (cons name url))
-                                     (g-music-extm3u-parse data))))
+  (let ((content nil))
+    (g-music-extm3u-parse (-lambda ((name url)) (setq content (cons (cons name url) content))) data)
     (g-music-db-set-playlist-content playlist content)))
 
 (defun g-music-extm3u-update-playlists (data)
   "Parses the playlist extm3u data and updates the *db*."
-  (g-music-extm3u-map (-lambda ((name url))
-                        (g-music-db-set-playlist (g-music-db-create-playlist name url) *db*))
-                      (g-music-extm3u-parse data)))
+  (g-music-extm3u-parse (-lambda ((name url))
+                          (g-music-db-set-playlist (g-music-db-create-playlist name url) *db*))
+                        data))
 
-(defun g-music-extm3u-map (f seq)
-  "Maps an extm3u parse list with the given function f.
-The function f should have two parameters: name and url."
-  (-map f (-partition-in-steps 2 2 seq)))
-
-(defun g-music-extm3u-parse (data)
-  "Parses the given extm3u string into a list of names and urls.
-So it returns (\"song1\" \"http://song1\")"
+(defun g-music-extm3u-parse (fn data)
+  "Parses the given extm3u string and calls fn with every match.
+So it calls fn with (\"song1\" \"http://song1\")"
   (let ((regex "^#EXTINF:.*[0-9]+,\\(.+\\)
 \\(http.+\\)$"))
-    (g-music-match-regex data regex 0)))
+    (g-music-match-regex data regex fn)))
 
-(defun g-music-match-regex (str regex start)
-  "Returns all the matching groups of regex in str as a list."
-  (if (string-match-p regex str start)
-      (save-match-data
-        (string-match regex str start)
-        (-let* ((all-match-pos (-partition-in-steps 2 2 (match-data t)))
-                ((_ new-start) (car all-match-pos))
-                (group-matches (-map (-lambda ((start end)) (substring str start end)) (cdr all-match-pos))))
-          (-union group-matches (g-music-match-regex str regex new-start))))
-    '()))
+(defun g-music-match-regex (str regex fn)
+  "Calls fn with the matching groups of regex in str one by one."
+  (let ((start 0)
+        (data  '()))
+    (save-match-data
+      (while (string-match regex str start)
+             (-let* ((all-match-pos (-partition-in-steps 2 2 (match-data t)))
+                     ((_ new-start) (car all-match-pos))
+                     (group-matches (-map (-lambda ((start end)) (substring str start end)) (cdr all-match-pos))))
+               (fn group-matches)
+               (setq start new-start))))))
                              
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User Interface
@@ -169,7 +166,7 @@ So it returns (\"song1\" \"http://song1\")"
           (let ((content (g-music-db-get-playlist-content pl)))
             (g-music-create-playlist-widget pl)
             (when (not (null content))
-              (-map 'g-music-create-playlist-widget content))))
+              (-map 'g-music-create-song-widget content))))
         *db*)
 
   (widget-setup)
@@ -191,7 +188,7 @@ So it returns (\"song1\" \"http://song1\")"
                    :tag playlist
                    :help-echo "Expand this playlist"
                    :notify (lambda (widget &rest ignore)
-                             (g-music-refresh-playlist-content (widget-get :tag)))
+                             (g-music-refresh-playlist-content (widget-get widget :tag)))
                    (concat "* " value))))
 
 (defun g-music-create-song-widget (song)
