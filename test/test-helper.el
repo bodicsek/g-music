@@ -11,8 +11,6 @@
 (defun reinit-g-music-db ()
   (setq *db* nil))
 
-(defun prepend (pre1 pre2 list)
-  
 (defun get-string-from-file (filePath)
   "Return filePath's file content."
   (with-temp-buffer

@@ -124,7 +124,7 @@
   "Parses the playlist content extm3u data and updates the given playlist's :content."
   (let ((content nil))
     (g-music-extm3u-parse (-lambda ((name url)) (setq content (cons (cons name url) content))) data)
-    (g-music-db-set-playlist-content playlist content)))
+    (g-music-db-set-playlist-content playlist (reverse content))))
 
 (defun g-music-extm3u-update-playlists (data)
   "Parses the playlist extm3u data and updates the *db*."
@@ -148,7 +148,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
              (-let* ((all-match-pos (-partition-in-steps 2 2 (match-data t)))
                      ((_ new-start) (car all-match-pos))
                      (group-matches (-map (-lambda ((start end)) (substring str start end)) (cdr all-match-pos))))
-               (fn group-matches)
+               (funcall fn group-matches)
                (setq start new-start))))))
                              
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

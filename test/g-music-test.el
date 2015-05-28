@@ -75,16 +75,20 @@
 (ert-deftest extm3u-test/g-music-match-regex--group-1 ()
   "Should return the one and only group match"
   (let ((str "1 orange")
-        (re  "\\([0-9]\\)"))
+        (re  "\\([0-9]\\)")
+        (result nil))
+    (g-music-match-regex str re (-lambda ((x)) (setq result (cons x result))))
     (should (equal '("1")
-                   (g-music-match-regex str re 0)))))
+                   result))))
 
 (ert-deftest extm3u-test/g-music-match-regex--group-2 ()
   "Should return 2 group matches"
   (let ((str "1 orange, 2 apples")
-        (re  "\\([0-9]\\)"))
-    (should (equal '("1" "2")
-                   (g-music-match-regex str re 0)))))
+        (re  "\\([0-9]\\)")
+        (result nil))
+    (g-music-match-regex str re (-lambda ((x)) (setq result (cons x result))))
+    (should (equal '("2" "1")
+                   result))))
 
 (ert-deftest extm3u-test/g-music-match-regex--single-extm3u-entry ()
   "Should return 2 group matches of extm3u entry"
@@ -93,7 +97,7 @@ http://192.168.2.115:9999/get_playlist?id=df2f1c84-3bdb-4420-a656-65e21d9ea3b3")
         (re  "^#EXTINF:.*[0-9]+,\\(.+\\)
 \\(http.+\\)$")
         (result nil))
-    (g-music-match-regex str re (-lambda ((name url)) (cons name (cons url result))))
+    (g-music-match-regex str re (-lambda ((name url)) (setq result (cons name (cons url result)))))
     (should (equal '("Jazz bonus set 1" "http://192.168.2.115:9999/get_playlist?id=df2f1c84-3bdb-4420-a656-65e21d9ea3b3")
                    result))))
 
@@ -107,8 +111,8 @@ http://192.168.2.115:9999/get_playlist?id=594dc46c-77df-4d83-beae-3f3043ad3133")
 \\(http.+\\)$")
         (result nil))
     (g-music-match-regex str re (-lambda ((name url)) (setq result (cons name (cons url result)))))
-    (should (equal '("Jazz bonus set 1" "http://192.168.2.115:9999/get_playlist?id=df2f1c84-3bdb-4420-a656-65e21d9ea3b3"
-                     "Jazz" "http://192.168.2.115:9999/get_playlist?id=594dc46c-77df-4d83-beae-3f3043ad3133")
+    (should (equal '("Jazz" "http://192.168.2.115:9999/get_playlist?id=594dc46c-77df-4d83-beae-3f3043ad3133"
+                     "Jazz bonus set 1" "http://192.168.2.115:9999/get_playlist?id=df2f1c84-3bdb-4420-a656-65e21d9ea3b3")
                    result))))
 
 (ert-deftest extm3u-test/g-music-extm3u-update-playlists ()
