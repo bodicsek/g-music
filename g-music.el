@@ -41,9 +41,10 @@
 (defvar *db* nil
   "A list of playlists
    A playlist is represented as a property list:
-   :plname  - the displayed name of the playlist
-   :plurl   - the url to be used to get the playlist content
-   :content - a list of songs
+   :plname            - the displayed name of the playlist
+   :plurl             - the url to be used to get the playlist content
+   :content           - a list of songs
+   :content-displayed - bool value, that shows if the content should be displayed
    A song is represented as a cons:
    (name . url)")
 
@@ -52,7 +53,7 @@
                                                (concat *g-music-proxy-addr* "/get_collection")))))
 
 (defun g-music-db-create-playlist (name url)
-  (list :plname name :plurl url :content nil))
+  (list :plname name :plurl url :content nil :content-display nil))
 
 (defun g-music-db-get-playlist (name db)
   (cl-find name db :key (cl-function (lambda (pl) (cl-getf pl :plname))) :test 'equal))
@@ -74,12 +75,25 @@
 (defun g-music-db-set-playlist-content (playlist content)
   (setf (cl-getf playlist :content) content))
 
+(defun g-music-db-get-playlist-content-display (playlist)
+  (cl-getf playlist :content-display))
+
+(defun g-music-db-set-playlist-content-display (playlist flag)
+  (setf (cl-getf playlist :content-display) flag))
+
+(defun g-music-db-exclusive-set-playlist-content-display (playlist db)
+  (g-music-db-clear-all-playlist-content-display db)
+  (g-music-db-set-playlist-content-display playlist t))
+
+(defun g-music-db-clear-all-playlist-content-display (db)
+  (-map (-lambda (pl) (g-music-db-set-playlist-content-display pl nil)) db))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Major mode map and its handlers
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defvar g-music-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "g") 'g-music-refresh)
+    (define-key map (kbd "u") 'g-music-refresh)
     (define-key map (kbd "RET") 'g-music-complete)
     map)
   "Keymap for g-music major mode.")
@@ -103,13 +117,21 @@
 
 (defun g-music-refresh-playlist-content (playlist)
   "Retrieves the content of the given playlist, updates the cache and redraws the buffer."
-  (let ((url (g-music-db-get-playlist-url playlist)))
-    (request url
-             :parser 'buffer-string
-             :success (cl-function (lambda (&key data &allow-other-keys)
-                                     (g-music-extm3u-update-playlist-content playlist data)
-                                     (message "Updating buffer..")
-                                     (g-music-buffer-setup))))))
+  (let ((content (g-music-db-get-playlist-content playlist))
+        (content-display (g-music-db-get-playlist-content-display playlist))
+        (url (g-music-db-get-playlist-url playlist)))
+    (if (not (null content-display))
+        (progn (g-music-db-clear-all-playlist-content-display *db*)
+               (g-music-buffer-setup))
+      (if (null content)
+          (request url
+                   :parser 'buffer-string
+                   :success (cl-function (lambda (&key data &allow-other-keys)
+                                           (g-music-extm3u-update-playlist-content playlist data)
+                                           (g-music-db-exclusive-set-playlist-content-display playlist *db*)
+                                           (g-music-buffer-setup))))
+        (progn (g-music-db-exclusive-set-playlist-content-display playlist *db*)
+               (g-music-buffer-setup))))))
 
 ;; TODO: make the proxy command configurable
 ;; TODO: wait for the process to initialize
@@ -156,23 +178,22 @@ So it calls fn with (\"song1\" \"http://song1\")"
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defun g-music-buffer-setup ()
   "Render the file browser in the *GMusic* buffer."
-  (setq deft-window-width (window-width))
+  (setq orig-point (point))
   (let ((inhibit-read-only t))
     (erase-buffer))
-  (remove-overlays)
   (g-music-print-header)
 
   (-map (lambda (pl)
-          (let ((content (g-music-db-get-playlist-content pl)))
+          (let ((content (g-music-db-get-playlist-content pl))
+                (display (g-music-db-get-playlist-content-display pl)))
             (g-music-create-playlist-widget pl)
-            (when (not (null content))
+            (when (and (not (null content))
+                       display)
               (-map 'g-music-create-song-widget content))))
         *db*)
 
   (widget-setup)
-  ;; TODO: preserve point location
-  (goto-char 1)
-  (forward-line 2))
+  (goto-char orig-point))
 
 (defun g-music-print-header ()
   (widget-insert "GMusic")
@@ -218,7 +239,12 @@ So it calls fn with (\"song1\" \"http://song1\")"
   
   (g-music-start-proxy)
   (g-music-db-init)
+  
+  (setq deft-window-width (window-width))
+  (remove-overlays)
   (g-music-buffer-setup)
+  (goto-char 1)
+  (forward-line 2)
   
   (run-hooks 'g-music-mode-hook))
 

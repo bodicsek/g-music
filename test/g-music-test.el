@@ -61,13 +61,26 @@
     (should (equal (cl-getf playlist :content)
                    (g-music-db-get-playlist-content playlist)))))
 
-(ert-deftest db-test/g-music-sb-set-playlist-content ()
+(ert-deftest db-test/g-music-db-set-playlist-content ()
   "Should set the songs for the given playlist"
   (let ((playlist (list :content nil))
         (new-content (cons "song" "http://song")))
     (g-music-db-set-playlist-content playlist new-content)
     (should (equal new-content
                    (g-music-db-get-playlist-content playlist)))))
+
+(ert-deftest db-test/g-music-db-exclusive-set-playlist-content-display ()
+    "Should set the given playlist's flag to true, all the others should be false"
+  (let* ((db (list (list :plname "pl1" :content-display t)
+                   (list :plname "pl2" :content-display nil)
+                   (list :plname "pl3" :content-display nil)))
+         (pl1 (g-music-db-get-playlist "pl1" db))
+         (pl3 (g-music-db-get-playlist "pl3" db)))
+    (g-music-db-exclusive-set-playlist-content-display pl3 db)
+    (should (and (equal (g-music-db-get-playlist-content-display pl1)
+                        nil)
+                 (equal (g-music-db-get-playlist-content-display pl3)
+                        t)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; extm3u tests
