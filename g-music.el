@@ -27,6 +27,11 @@
   "Face for GMusic playlists."
   :group 'g-music-faces)
 
+(defface g-music-playlist-content-face
+  '((t :inherit font-lock-string-face))
+  "Face for GMusic playlist content."
+  :group 'g-music-faces)
+
 (defvar g-music-mode-hook nil
   "*List of functions to call when entering g-music mode.")
 
@@ -217,6 +222,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
     (widget-create 'link
                    :button-prefix ""
                    :button-suffix ""
+                   :button-face 'g-music-playlist-content-face
                    :format "%[%v%]\n"
                    :tag url
                    :help-echo "Play this song."
