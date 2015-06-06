@@ -6,7 +6,7 @@
 ;; Created: 23 May 2015
 ;; Keywords: google music
 ;; Version: 0.0.1
-;; Package-Requires: ((request "0.1.0") (dash "2.10.0"))
+;; Package-Requires: ((request) (dash) (libmpdee))
 
 ;; This file is not part of GNU Emacs.
 
@@ -18,6 +18,7 @@
 (require 'wid-edit)
 (require 'request)
 (require 'dash)
+(require 'libmpdee)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Configurable (public) variables
@@ -35,7 +36,11 @@
 (defvar g-music-mode-hook nil
   "*List of functions to call when entering g-music mode.")
 
-(defvar *g-music-proxy-addr* "http://127.0.0.1:9999")
+(defvar *g-music-proxy-addr* "127.0.0.1")
+(defvar *g-music-proxy-port* 9999)
+
+(defvar *g-music-mpd-addr* "127.0.0.1")
+(defvar *g-music-mpd-port* 6600)
 
 (defconst *g-music-buffer* "*GMusic*"
   "GMusic buffer name.")
@@ -54,8 +59,9 @@
    (name . url)")
 
 (defun g-music-db-init ()
-  (setq *db* (list (g-music-db-create-playlist "collection"
-                                               (concat *g-music-proxy-addr* "/get_collection")))))
+  (setq *db* (list (g-music-db-create-playlist
+                    "collection"
+                    (g-music--get-url *g-music-proxy-addr* *g-music-proxy-port* "/get_collection")))))
 
 (defun g-music-db-create-playlist (name url)
   (list :plname name :plurl url :content nil :content-display nil))
@@ -93,6 +99,16 @@
 (defun g-music-db-clear-all-playlist-content-display (db)
   (-map (-lambda (pl) (g-music-db-set-playlist-content-display pl nil)) db))
 
+(defvar *mpd* nil
+  "The mpd connection.")
+
+(defun g-music-mpd-init ()
+  (setf *mpd* (mpd-conn-new *g-music-mpd-addr* *g-music-mpd-port*))
+  (mpd-clear-playlist *mpd*))
+
+(defun g-music--get-url (host port &optional rest)
+  (concat "http://" host ":" (number-to-string port) rest))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Major mode map and its handlers
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -106,7 +122,7 @@
 (defun g-music-refresh ()
   "Reinitializes the cache and redraws the buffer."
   (interactive)
-  (request (concat *g-music-proxy-addr* "/get_all_playlists")
+  (request (g-music--get-url *g-music-proxy-addr* *g-music-proxy-port* "/get_all_playlists")
            :parser 'buffer-string
            :success (cl-function (lambda (&key data &allow-other-keys)
                                    (g-music-db-init)
@@ -194,14 +210,18 @@ So it calls fn with (\"song1\" \"http://song1\")"
             (g-music-create-playlist-widget pl)
             (when (and (not (null content))
                        display)
-              (-map 'g-music-create-song-widget content))))
+              (-map-indexed 'g-music-create-song-widget content))))
         *db*)
 
   (widget-setup)
   (goto-char orig-point))
 
 (defun g-music-print-header ()
-  (widget-insert "GMusic")
+  (widget-insert "GMusic Connection: ")
+  (widget-insert (g-music--get-url *g-music-proxy-addr* *g-music-proxy-port*))
+  (widget-insert "\n")
+  (widget-insert "MPD Connection:    ")
+  (widget-insert (g-music--get-url *g-music-mpd-addr* *g-music-mpd-port*))
   (widget-insert "\n\n"))
 
 (defun g-music-create-playlist-widget (playlist)
@@ -217,7 +237,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
                              (g-music-refresh-playlist-content (widget-get widget :tag)))
                    (concat "* " value))))
 
-(defun g-music-create-song-widget (song)
+(defun g-music-create-song-widget (pos song)
   (-let (((name . url) song))
     (widget-create 'link
                    :button-prefix ""
@@ -225,6 +245,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
                    :button-face 'g-music-playlist-content-face
                    :format "%[%v%]\n"
                    :tag url
+                   :pos pos
                    :help-echo "Play this song."
                    :notify (lambda (widget &rest ignore)
                              (message "Playing song..."))
@@ -245,6 +266,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
   
   (g-music-start-proxy)
   (g-music-db-init)
+  (g-music-mpd-init)
   
   (setq deft-window-width (window-width))
   (remove-overlays)

@@ -6,6 +6,7 @@
 (files "*.el")
 (depends-on "request")
 (depends-on "dash")
+(depends-on "libmpdee")
 
 ;; (package-file "g-music.el")
 
