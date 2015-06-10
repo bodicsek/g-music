@@ -106,6 +106,12 @@
   (setf *mpd* (mpd-conn-new *g-music-mpd-addr* *g-music-mpd-port*))
   (mpd-clear-playlist *mpd*))
 
+(defun g-music-mpd-url (&optional rest)
+  (g-music--get-url *g-music-mpd-addr* *g-music-mpd-port* rest))
+
+(defun g-music-proxy-url (&optional rest)
+  (g-music--get-url *g-music-proxy-addr* *g-music-proxy-port* rest))
+
 (defun g-music--get-url (host port &optional rest)
   (concat "http://" host ":" (number-to-string port) rest))
 
@@ -122,7 +128,7 @@
 (defun g-music-refresh ()
   "Reinitializes the cache and redraws the buffer."
   (interactive)
-  (request (g-music--get-url *g-music-proxy-addr* *g-music-proxy-port* "/get_all_playlists")
+  (request (g-music-proxy-url "/get_all_playlists")
            :parser 'buffer-string
            :success (cl-function (lambda (&key data &allow-other-keys)
                                    (g-music-db-init)
@@ -141,18 +147,35 @@
   (let ((content (g-music-db-get-playlist-content playlist))
         (content-display (g-music-db-get-playlist-content-display playlist))
         (url (g-music-db-get-playlist-url playlist)))
-    (if (not (null content-display))
-        (progn (g-music-db-clear-all-playlist-content-display *db*)
-               (g-music-buffer-setup))
-      (if (null content)
-          (request url
-                   :parser 'buffer-string
-                   :success (cl-function (lambda (&key data &allow-other-keys)
-                                           (g-music-extm3u-update-playlist-content playlist data)
-                                           (g-music-db-exclusive-set-playlist-content-display playlist *db*)
-                                           (g-music-buffer-setup))))
-        (progn (g-music-db-exclusive-set-playlist-content-display playlist *db*)
-               (g-music-buffer-setup))))))
+    (cond
+     ;;no playlist content, so request it
+     ((null content)
+      (request url
+               :parser 'buffer-string
+               :success (cl-function (lambda (&key data &allow-other-keys)
+                                       (g-music-extm3u-update-playlist-content playlist data)
+                                       (g-music-refresh-playlist-content playlist)))))
+     ;;content-display is true, let's hide it
+     ((not (null content-display))
+      (g-music-db-clear-all-playlist-content-display *db*)
+      (g-music-mpd-setup)
+      (g-music-buffer-setup))
+     ;;content-display is false, let's show it
+     ((null content-display)
+      (g-music-db-exclusive-set-playlist-content-display playlist *db*)
+      (g-music-mpd-setup)
+      (g-music-buffer-setup)))))
+
+(defun g-music-mpd-setup ()
+  "Reinitializes the active mpd playlist based on the current state of the *db*"
+  (mpd-clear-playlist *mpd*)
+  (-each
+      (-filter (lambda (pl) (g-music-db-get-playlist-content-display pl)) *db*)
+    'g-music-mpd-enqueue-playlist))
+
+(defun g-music-mpd-enqueue-playlist (playlist)
+  (let ((content (g-music-db-get-playlist-content playlist)))
+    (-each content (-lambda ((name . url)) (mpd-enqueue *mpd* url)))))
 
 ;; TODO: make the proxy command configurable
 ;; TODO: wait for the process to initialize
@@ -218,10 +241,10 @@ So it calls fn with (\"song1\" \"http://song1\")"
 
 (defun g-music-print-header ()
   (widget-insert "GMusic Connection: ")
-  (widget-insert (g-music--get-url *g-music-proxy-addr* *g-music-proxy-port*))
+  (widget-insert (g-music-proxy-url))
   (widget-insert "\n")
   (widget-insert "MPD Connection:    ")
-  (widget-insert (g-music--get-url *g-music-mpd-addr* *g-music-mpd-port*))
+  (widget-insert (g-music-mpd-url))
   (widget-insert "\n\n"))
 
 (defun g-music-create-playlist-widget (playlist)
@@ -244,7 +267,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
                    :button-suffix ""
                    :button-face 'g-music-playlist-content-face
                    :format "%[%v%]\n"
-                   :tag url
+s                   :tag url
                    :pos pos
                    :help-echo "Play this song."
                    :notify (lambda (widget &rest ignore)
@@ -272,7 +295,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
   (remove-overlays)
   (g-music-buffer-setup)
   (goto-char 1)
-  (forward-line 2)
+  (forward-line 3)
   
   (run-hooks 'g-music-mode-hook))
 

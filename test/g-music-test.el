@@ -83,6 +83,59 @@
                         t)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; utils tests
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(ert-deftest utils-test/g-music--get-url ()
+  "Should return http://addr:port when addr is a string port is a number"
+  (should (equal "http://127.0.0.1:6600"
+                 (g-music--get-url "127.0.0.1" 6600))))
+
+(ert-deftest utils-test/g-music--get-url--rest ()
+  "Should return http://addr:port/rest if rest is provided"
+  (should (equal "http://127.0.0.1:6600/get"
+                 (g-music--get-url "127.0.0.1" 6600 "/get"))))
+
+(ert-deftest utils-test/g-music--get-url--non-string-addr ()
+  "Should throw an error if addr is not a string"
+  (should-error (g-music--get-url 127001 6600)))
+
+(ert-deftest utils-test/g-music--get-url--non-number-port ()
+  "Should throw an error if port is not a number"
+  (should-error (g-music--get-url "something" "port")))
+
+(ert-deftest utils-test/g-music--get-url--non-string-rest ()
+  "Should throw an error if rest is not a string"
+  (should-error (g-music--get-url "localhost" 1024 1)))
+
+(ert-deftest utils-test/g-music-mpd-url ()
+  "Should return http://localhost:1024"
+  (setf *g-music-mpd-addr* "localhost")
+  (setf *g-music-mpd-port* 1024)
+  (should (equal "http://localhost:1024"
+                 (g-music-mpd-url))))
+
+(ert-deftest utils-test/g-music-mpd-url--rest ()
+  "Should return http://remote:9999/get_something"
+  (setf *g-music-mpd-addr* "remote")
+  (setf *g-music-mpd-port* 9999)
+  (should (equal "http://remote:9999/get_something"
+                 (g-music-mpd-url "/get_something"))))
+
+(ert-deftest utils-test/g-music-proxy-url ()
+  "Should return http://localproxy:1111"
+  (setf *g-music-proxy-addr* "localproxy")
+  (setf *g-music-proxy-port* 1111)
+  (should (equal "http://localproxy:1111"
+                 (g-music-proxy-url))))
+
+(ert-deftest utils-test/g-music-proxy-url--rest ()
+  "Should return http://remoteproxy:2222/something"
+  (setf *g-music-proxy-addr* "remoteproxy")
+  (setf *g-music-proxy-port* 2222)
+  (should (equal "http://remoteproxy:2222/something"
+                 (g-music-proxy-url "/something"))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; extm3u tests
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (ert-deftest extm3u-test/g-music-match-regex--group-1 ()
