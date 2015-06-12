@@ -1,5 +1,9 @@
 ;;-*- lexical-binding: t -*-
 
+(require 'cl)
+(require 'cl-lib)
+(require 'el-mock)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; db tests
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -204,4 +208,22 @@ http://192.168.2.115:9999/get_song?id=Tjk22ydqo4cvklyoxgcoche4moq"))
     (should (equal '("Count Basie - Blues In Hoss's Flat" "Charlie Parker - Now's The Time")
                    (-map (-lambda ((name . _)) name) (g-music-db-get-playlist-content playlist))))))
 
-  
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; mpd tests
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(ert-deftest mpd-test/g-music-mpd-enqueue-playlist ()
+  "Should call the mpd-enqueue mock for every song in the playlist"
+  (let ((playlist (list :content (list '("song1" . "url1")))))
+    (with-mock
+     (mock (mpd-enqueue * *) :times 1)
+     (g-music-mpd-enqueue-playlist nil playlist))))
+
+(ert-deftest mpd-test/g-music-mpd-setup ()
+  "Should call mpd-clear-playlist once and mpd-enqueue for each song"
+  (let ((db (list (list :content-display t :content (list '("song1" . "url1")
+                                                          '("song2" . "url2")))
+                  (list :content-display nil :content (list '("song3" . "url3"))))))
+    (with-mock
+     (mock (mpd-clear-playlist *) :times 1)
+     (mock (mpd-enqueue * *) :times 2)
+     (g-music-mpd-setup nil db))))

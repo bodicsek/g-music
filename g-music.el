@@ -6,7 +6,7 @@
 ;; Created: 23 May 2015
 ;; Keywords: google music
 ;; Version: 0.0.1
-;; Package-Requires: ((request) (dash) (libmpdee))
+;; Package-Requires: ((request) (dash) (libmpdee) (s))
 
 ;; This file is not part of GNU Emacs.
 
@@ -19,6 +19,7 @@
 (require 'request)
 (require 'dash)
 (require 'libmpdee)
+(require 's)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Configurable (public) variables
@@ -31,6 +32,11 @@
 (defface g-music-playlist-content-face
   '((t :inherit font-lock-string-face))
   "Face for GMusic playlist content."
+  :group 'g-music-faces)
+
+(defface g-music-playlist-play-content-face
+  '((t :inherit font-lock-string-face :bold t))
+  "Face for GMusic playlist content which is currently active."
   :group 'g-music-faces)
 
 (defvar g-music-mode-hook nil
@@ -99,12 +105,22 @@
 (defun g-music-db-clear-all-playlist-content-display (db)
   (-map (-lambda (pl) (g-music-db-set-playlist-content-display pl nil)) db))
 
+
 (defvar *mpd* nil
   "The mpd connection.")
 
 (defun g-music-mpd-init ()
   (setf *mpd* (mpd-conn-new *g-music-mpd-addr* *g-music-mpd-port*))
   (mpd-clear-playlist *mpd*))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Utils
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; TODO: make the proxy command configurable
+;; TODO: wait for the process to initialize
+(defun g-music-start-proxy ()
+  (start-process "GMusicProxy" "*GMusicProxy*" "GMusicProxy")
+  (display-buffer "*GMusicProxy*"))
 
 (defun g-music-mpd-url (&optional rest)
   (g-music--get-url *g-music-mpd-addr* *g-music-mpd-port* rest))
@@ -116,7 +132,7 @@
   (concat "http://" host ":" (number-to-string port) rest))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Major mode map and its handlers
+;; Major mode map
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defvar g-music-mode-map
   (let ((map (make-sparse-keymap)))
@@ -158,30 +174,13 @@
      ;;content-display is true, let's hide it
      ((not (null content-display))
       (g-music-db-clear-all-playlist-content-display *db*)
-      (g-music-mpd-setup)
+      (g-music-mpd-setup *mpd* *db*)
       (g-music-buffer-setup))
      ;;content-display is false, let's show it
      ((null content-display)
       (g-music-db-exclusive-set-playlist-content-display playlist *db*)
-      (g-music-mpd-setup)
+      (g-music-mpd-setup *mpd* *db*)
       (g-music-buffer-setup)))))
-
-(defun g-music-mpd-setup ()
-  "Reinitializes the active mpd playlist based on the current state of the *db*"
-  (mpd-clear-playlist *mpd*)
-  (-each
-      (-filter (lambda (pl) (g-music-db-get-playlist-content-display pl)) *db*)
-    'g-music-mpd-enqueue-playlist))
-
-(defun g-music-mpd-enqueue-playlist (playlist)
-  (let ((content (g-music-db-get-playlist-content playlist)))
-    (-each content (-lambda ((name . url)) (mpd-enqueue *mpd* url)))))
-
-;; TODO: make the proxy command configurable
-;; TODO: wait for the process to initialize
-(defun g-music-start-proxy ()
-  (start-process "GMusicProxy" "*GMusicProxy*" "GMusicProxy")
-  (display-buffer "*GMusicProxy*"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; extm3u parsing
@@ -216,7 +215,21 @@ So it calls fn with (\"song1\" \"http://song1\")"
                      (group-matches (-map (-lambda ((start end)) (substring str start end)) (cdr all-match-pos))))
                (funcall fn group-matches)
                (setq start new-start))))))
-                             
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; MPD Interface
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defun g-music-mpd-setup (mpd-conn db)
+  "Reinitializes the active mpd playlist based on the current state of the *db*"
+  (mpd-clear-playlist mpd-conn)
+  (-each
+      (-filter (lambda (pl) (g-music-db-get-playlist-content-display pl)) db)
+    (lambda (pl) (g-music-mpd-enqueue-playlist mpd-conn pl))))
+
+(defun g-music-mpd-enqueue-playlist (mpd-conn playlist)
+  (let ((content (g-music-db-get-playlist-content playlist)))
+    (-each content (-lambda ((name . url)) (mpd-enqueue mpd-conn url)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User Interface
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -227,14 +240,17 @@ So it calls fn with (\"song1\" \"http://song1\")"
     (erase-buffer))
   (g-music-print-header)
 
-  (-map (lambda (pl)
-          (let ((content (g-music-db-get-playlist-content pl))
-                (display (g-music-db-get-playlist-content-display pl)))
-            (g-music-create-playlist-widget pl)
-            (when (and (not (null content))
-                       display)
-              (-map-indexed 'g-music-create-song-widget content))))
-        *db*)
+  (let ((have-displayable-content
+         (-any-p (lambda (pl) (g-music-db-get-playlist-content-display pl)) *db*)))
+    (-map (lambda (pl)
+            (let ((pl-content         (g-music-db-get-playlist-content pl))
+                  (pl-display-content (g-music-db-get-playlist-content-display pl))
+                  (pl-widget          (g-music-create-playlist-widget pl have-displayable-content)))
+              (when pl-display-content
+                (widget-put pl-widget
+                            :children
+                            (-map-indexed (-lambda (pos song) (g-music-create-song-widget pl-widget pos song)) pl-content)))))
+          *db*))
 
   (widget-setup)
   (goto-char orig-point))
@@ -247,32 +263,78 @@ So it calls fn with (\"song1\" \"http://song1\")"
   (widget-insert (g-music-mpd-url))
   (widget-insert "\n\n"))
 
-(defun g-music-create-playlist-widget (playlist)
-  (let ((value (g-music-db-get-playlist-name playlist)))
-    (widget-create 'link
-                   :button-prefix ""
-                   :button-suffix ""
-                   :button-face 'g-music-playlist-face
-                   :format "%[%v%]\n"
-                   :tag playlist
-                   :help-echo "Expand this playlist"
-                   :notify (lambda (widget &rest ignore)
-                             (g-music-refresh-playlist-content (widget-get widget :tag)))
-                   (concat "* " value))))
+(defun g-music-create-playlist-widget (playlist is-default-disabled)
+  (let* ((value (g-music-db-get-playlist-name playlist))
+         (display (g-music-db-get-playlist-content-display playlist))
+         (widget (widget-create 'link
+                                :button-prefix ""
+                                :button-suffix ""
+                                :button-face 'g-music-playlist-face
+                                :format "%[%v%]\n"
+                                :tag playlist
+                                :help-echo "Expand this playlist"
+                                :notify (lambda (widget &rest ignore)
+                                          (g-music-refresh-playlist-content (widget-get widget :tag)))
+                                (concat "* " value))))
+    ;; by default the widget should be disabled
+    ;; but if we have content to display activate it
+    (if (and is-default-disabled (not display))
+        (widget-apply widget :deactivate)
+      (widget-apply widget :activate))
+    widget))
 
-(defun g-music-create-song-widget (pos song)
+(defun g-music-create-song-widget (parent-widget pos song)
   (-let (((name . url) song))
     (widget-create 'link
                    :button-prefix ""
                    :button-suffix ""
                    :button-face 'g-music-playlist-content-face
                    :format "%[%v%]\n"
-s                   :tag url
+                   :tag url
                    :pos pos
+                   :parent parent-widget
                    :help-echo "Play this song."
                    :notify (lambda (widget &rest ignore)
-                             (message "Playing song..."))
-                   (concat "  " name))))
+                             (g-music-song-notify-handler widget))
+                   (concat "   " name))))
+
+(defun g-music-song-notify-handler (widget)
+  (let* ((status-info (mpd-get-status *mpd*))
+         (state       (plist-get status-info 'state))
+         (active-pos  (plist-get status-info 'song))
+         (value       (widget-get widget :value))
+         (name        (s-chop-prefix (s-left 3 value) value))
+         (pos         (widget-get widget :pos)))
+    (cond
+     ((equal state 'play)
+      (if (equal active-pos pos)
+          (progn (mpd-pause *mpd*)
+                 (widget-value-set widget (concat "|| " name)))
+        (g-music-song-play-other widget active-pos)))
+     ((equal state 'pause)
+      (if (equal active-pos pos)
+          (progn (mpd-pause *mpd*)
+                 (widget-value-set widget (concat ">  " name)))
+        (g-music-song-play-other widget active-pos)))
+     ((equal state 'stop)
+      (mpd-play *mpd* pos)
+      (widget-value-set widget (concat ">  " name))))
+    (widget-setup)))
+
+(defun g-music-song-play-other (widget active-pos)
+  (let* ((parent-widget           (widget-get widget :parent))
+         (active-pos-widget       (-first
+                                   (lambda (w) (equal (widget-get w :pos) active-pos))
+                                   (widget-get parent-widget :children)))
+         (active-pos-widget-value (widget-get active-pos-widget :value))
+         (value                   (widget-get widget :value))
+         (name                    (s-chop-prefix (s-left 3 value) value))
+         (pos                     (widget-get widget :pos)))
+    (mpd-stop *mpd*)
+    (mpd-play *mpd* pos)
+    (widget-value-set active-pos-widget
+                      (concat "   " (s-chop-prefix (s-left 3 active-pos-widget-value) active-pos-widget-value)))
+    (widget-value-set widget (concat ">  " name))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Major mode setup
