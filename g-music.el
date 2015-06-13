@@ -14,12 +14,13 @@
 ;; along with this file.  If not, see <http://www.gnu.org/licenses/>.
 
 (require 'cl-lib)
-(require 'cl-macs)
 (require 'wid-edit)
-(require 'request)
-(require 'dash)
-(require 'libmpdee)
+
 (require 's)
+(require 'dash)
+(require 'request)
+(require 'libmpdee)
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Configurable (public) variables
@@ -301,53 +302,81 @@ So it calls fn with (\"song1\" \"http://song1\")"
                              (g-music-song-widget-notify-handler widget))
                    (concat "   " name))))
 
+(defvar *active-song-widget* nil
+  "The active song widget that is selected for action or played by MPD.")
+
 (defun g-music-song-widget-notify-handler (widget)
-  (let* ((status-info (mpd-get-status *mpd*))
-         (state       (plist-get status-info 'state))
-         (active-pos  (plist-get status-info 'song))
-         (value       (widget-get widget :value))
-         (name        (s-chop-prefix (s-left 3 value) value))
-         (pos         (widget-get widget :pos)))
+  (let* ((mpd-status-info  (mpd-get-status *mpd*))
+         (mpd-state        (plist-get mpd-status-info 'state))
+         (mpd-song-pos     (plist-get mpd-status-info 'song))
+         (actual-song-pos  (widget-get widget :pos)))
     (cond
-     ((equal state 'play)
-      (if (equal active-pos pos)
+     ((equal mpd-state 'play)
+      (if (equal mpd-song-pos actual-song-pos)
           ;; pause the current song
           ;; update the UI to show the new song state
           (progn (mpd-pause *mpd*)
-                 (widget-value-set widget (concat "|| " name)))
+                 (g-music-song-widget-set-marker widget 'pause))
         ;; it is a new song -> stop the current playback and start to play the new song
         ;; update the UI to show the new state
-        (g-music-song-play-other widget active-pos)))
-     ((equal state 'pause)
-      (if (equal active-pos pos)
+        (g-music-song-play-other widget)))
+     ((equal mpd-state 'pause)
+      (if (equal mpd-song-pos actual-song-pos)
           ;; resume the play of the current song
           ;; update the UI to show the new song state
           (progn (mpd-pause *mpd*)
-                 (widget-value-set widget (concat ">  " name)))
+                 (g-music-song-widget-set-marker widget 'play))
         ;; it is a new song -> stop the current playback and start to play the new song
         ;; update the UI to show the new state
-        (g-music-song-play-other widget active-pos)))
-     ((equal state 'stop)
+        (g-music-song-play-other widget)))
+     ((equal mpd-state 'stop)
       ;; start to play the song at the current position
       ;; update the UI to show the new song state
-      (mpd-play *mpd* pos)
-      (widget-value-set widget (concat ">  " name))))
-    (widget-setup)))
+      (mpd-play *mpd* actual-song-pos)
+      (g-music-song-widget-set-marker widget 'play)))
+    (widget-setup)
+    (setf *active-song-widget* widget)))
 
-(defun g-music-song-play-other (widget active-pos)
-  (let* ((parent-widget           (widget-get widget :parent))
-         (active-pos-widget       (-first
-                                   (lambda (w) (equal (widget-get w :pos) active-pos))
-                                   (widget-get parent-widget :children)))
-         (active-pos-widget-value (widget-get active-pos-widget :value))
-         (value                   (widget-get widget :value))
-         (name                    (s-chop-prefix (s-left 3 value) value))
-         (pos                     (widget-get widget :pos)))
-    (mpd-stop *mpd*)
-    (mpd-play *mpd* pos)
-    (widget-value-set active-pos-widget
-                      (concat "   " (s-chop-prefix (s-left 3 active-pos-widget-value) active-pos-widget-value)))
-    (widget-value-set widget (concat ">  " name))))
+(defun g-music-song-play-other (new-widget)
+  (mpd-stop *mpd*)
+  (mpd-play *mpd* (widget-get new-widget :pos))
+  (g-music-song-widget-clear-marker *active-song-widget*)
+  (g-music-song-widget-set-marker new-widget 'play))
+
+(defun g-music-reflect-mpd-status ()
+  (when *active-song-widget*
+    (let* ((mpd-status       (mpd-get-status *mpd*))
+           (mpd-song-pos     (plist-get mpd-status 'song))
+           (active-song-pos  (widget-get *active-song-widget* :pos)))
+      (with-current-buffer *g-music-buffer*
+       (when (not (equal mpd-song-pos active-song-pos))
+         (g-music-song-widget-clear-marker *active-song-widget*)
+         (let* ((active-playlist-widget (widget-get *active-song-widget* :parent))
+                (mpd-song-widget        (-first
+                                         (lambda (w) (equal (widget-get w :pos) mpd-song-pos))
+                                         (widget-get active-playlist-widget :children)))
+                (mpd-state        (plist-get mpd-status 'state)))
+           (g-music-song-widget-set-marker mpd-song-widget mpd-state)
+           (setf *active-song-widget* mpd-song-widget))
+         (widget-setup))))))
+
+(defun g-music-song-widget-clear-marker (widget)
+  (let ((widget-name (g-music-song-widget-get-name widget)))
+    (widget-value-set widget (concat "   " widget-name))))
+
+(defun g-music-song-widget-set-marker (widget state)
+  (let ((widget-name  (g-music-song-widget-get-name widget)))
+       (cond
+        ((equal state 'play)
+         (widget-value-set widget (concat ">  " widget-name)))
+        ((equal state 'pause)
+         (widget-value-set widget (concat "|| " widget-name)))
+        ((equal state 'stop)
+         (widget-value-set widget (concat "#  " widget-name))))))
+
+(defun g-music-song-widget-get-name (widget)
+  (let ((value (widget-get widget :value)))
+    (s-chop-prefix (s-left 3 value) value)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Major mode setup
@@ -371,6 +400,8 @@ So it calls fn with (\"song1\" \"http://song1\")"
   (g-music-buffer-setup)
   (goto-char 1)
   (forward-line 3)
+
+  (run-at-time t 15 'g-music-reflect-mpd-status)
   
   (run-hooks 'g-music-mode-hook))
 
