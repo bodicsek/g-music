@@ -34,19 +34,18 @@
   "Face for GMusic playlist content."
   :group 'g-music-faces)
 
-(defface g-music-playlist-play-content-face
-  '((t :inherit font-lock-string-face :bold t))
-  "Face for GMusic playlist content which is currently active."
-  :group 'g-music-faces)
-
 (defvar g-music-mode-hook nil
-  "*List of functions to call when entering g-music mode.")
+  "List of functions to call when entering g-music mode.")
 
-(defvar *g-music-proxy-addr* "127.0.0.1")
-(defvar *g-music-proxy-port* 9999)
+(defvar *g-music-proxy-addr* "127.0.0.1"
+  "GMusicProxy host.")
+(defvar *g-music-proxy-port* 9999
+  "GMusicProxy port.")
 
-(defvar *g-music-mpd-addr* "127.0.0.1")
-(defvar *g-music-mpd-port* 6600)
+(defvar *g-music-mpd-addr* "127.0.0.1"
+  "MPD host.")
+(defvar *g-music-mpd-port* 6600
+  "MPD port.")
 
 (defconst *g-music-buffer* "*GMusic*"
   "GMusic buffer name.")
@@ -65,6 +64,7 @@
    (name . url)")
 
 (defun g-music-db-init ()
+  "Initializes the g-music db with the default entries."
   (setq *db* (list (g-music-db-create-playlist
                     "collection"
                     (g-music--get-url *g-music-proxy-addr* *g-music-proxy-port* "/get_collection")))))
@@ -110,6 +110,7 @@
   "The mpd connection.")
 
 (defun g-music-mpd-init ()
+  "Creates a new MPD connection and clears the default MPD playlist."
   (setf *mpd* (mpd-conn-new *g-music-mpd-addr* *g-music-mpd-port*))
   (mpd-clear-playlist *mpd*))
 
@@ -118,6 +119,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; TODO: make the proxy command configurable
 ;; TODO: wait for the process to initialize
+;; TODO: check if we alredy have a running instance
 (defun g-music-start-proxy ()
   (start-process "GMusicProxy" "*GMusicProxy*" "GMusicProxy")
   (display-buffer "*GMusicProxy*"))
@@ -136,13 +138,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defvar g-music-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "u") 'g-music-refresh)
+    (define-key map (kbd "G") 'g-music-refresh)
     (define-key map (kbd "RET") 'g-music-complete)
     map)
   "Keymap for g-music major mode.")
 
 (defun g-music-refresh ()
-  "Reinitializes the cache and redraws the buffer."
+  "Reinitializes the db and redraws the buffer."
   (interactive)
   (request (g-music-proxy-url "/get_all_playlists")
            :parser 'buffer-string
@@ -157,30 +159,6 @@
   (if (widget-at)
       (widget-button-press (point))
     (message "Nothing to do.")))
-
-(defun g-music-refresh-playlist-content (playlist)
-  "Retrieves the content of the given playlist, updates the cache and redraws the buffer."
-  (let ((content (g-music-db-get-playlist-content playlist))
-        (content-display (g-music-db-get-playlist-content-display playlist))
-        (url (g-music-db-get-playlist-url playlist)))
-    (cond
-     ;;no playlist content, so request it
-     ((null content)
-      (request url
-               :parser 'buffer-string
-               :success (cl-function (lambda (&key data &allow-other-keys)
-                                       (g-music-extm3u-update-playlist-content playlist data)
-                                       (g-music-refresh-playlist-content playlist)))))
-     ;;content-display is true, let's hide it
-     ((not (null content-display))
-      (g-music-db-clear-all-playlist-content-display *db*)
-      (g-music-mpd-setup *mpd* *db*)
-      (g-music-buffer-setup))
-     ;;content-display is false, let's show it
-     ((null content-display)
-      (g-music-db-exclusive-set-playlist-content-display playlist *db*)
-      (g-music-mpd-setup *mpd* *db*)
-      (g-music-buffer-setup)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; extm3u parsing
@@ -220,13 +198,14 @@ So it calls fn with (\"song1\" \"http://song1\")"
 ;; MPD Interface
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defun g-music-mpd-setup (mpd-conn db)
-  "Reinitializes the active mpd playlist based on the current state of the *db*"
+  "Reinitializes the active MPD playlist based on the current state of the db"
   (mpd-clear-playlist mpd-conn)
   (-each
       (-filter (lambda (pl) (g-music-db-get-playlist-content-display pl)) db)
     (lambda (pl) (g-music-mpd-enqueue-playlist mpd-conn pl))))
 
 (defun g-music-mpd-enqueue-playlist (mpd-conn playlist)
+  "Enqueues the given playlist's content into the default MPD playlist."
   (let ((content (g-music-db-get-playlist-content playlist)))
     (-each content (-lambda ((name . url)) (mpd-enqueue mpd-conn url)))))
 
@@ -234,7 +213,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
 ;; User Interface
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defun g-music-buffer-setup ()
-  "Render the file browser in the *GMusic* buffer."
+  "Renders the db in the *GMusic* buffer."
   (setq orig-point (point))
   (let ((inhibit-read-only t))
     (erase-buffer))
@@ -274,7 +253,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
                                 :tag playlist
                                 :help-echo "Expand this playlist"
                                 :notify (lambda (widget &rest ignore)
-                                          (g-music-refresh-playlist-content (widget-get widget :tag)))
+                                          (g-music-playlist-widget-notify-handler (widget-get widget :tag)))
                                 (concat "* " value))))
     ;; by default the widget should be disabled
     ;; but if we have content to display activate it
@@ -282,6 +261,30 @@ So it calls fn with (\"song1\" \"http://song1\")"
         (widget-apply widget :deactivate)
       (widget-apply widget :activate))
     widget))
+
+(defun g-music-playlist-widget-notify-handler (playlist)
+  "Retrieves the content of the given playlist, updates the cache and redraws the buffer."
+  (let ((content (g-music-db-get-playlist-content playlist))
+        (content-display (g-music-db-get-playlist-content-display playlist))
+        (url (g-music-db-get-playlist-url playlist)))
+    (cond
+     ;;no playlist content, so request it
+     ((null content)
+      (request url
+               :parser 'buffer-string
+               :success (cl-function (lambda (&key data &allow-other-keys)
+                                       (g-music-extm3u-update-playlist-content playlist data)
+                                       (g-music-playlist-widget-notify-handler playlist)))))
+     ;;content-display is true, let's hide it
+     ((not (null content-display))
+      (g-music-db-clear-all-playlist-content-display *db*)
+      (g-music-mpd-setup *mpd* *db*)
+      (g-music-buffer-setup))
+     ;;content-display is false, let's show it
+     ((null content-display)
+      (g-music-db-exclusive-set-playlist-content-display playlist *db*)
+      (g-music-mpd-setup *mpd* *db*)
+      (g-music-buffer-setup)))))
 
 (defun g-music-create-song-widget (parent-widget pos song)
   (-let (((name . url) song))
@@ -295,10 +298,10 @@ So it calls fn with (\"song1\" \"http://song1\")"
                    :parent parent-widget
                    :help-echo "Play this song."
                    :notify (lambda (widget &rest ignore)
-                             (g-music-song-notify-handler widget))
+                             (g-music-song-widget-notify-handler widget))
                    (concat "   " name))))
 
-(defun g-music-song-notify-handler (widget)
+(defun g-music-song-widget-notify-handler (widget)
   (let* ((status-info (mpd-get-status *mpd*))
          (state       (plist-get status-info 'state))
          (active-pos  (plist-get status-info 'song))
@@ -308,15 +311,25 @@ So it calls fn with (\"song1\" \"http://song1\")"
     (cond
      ((equal state 'play)
       (if (equal active-pos pos)
+          ;; pause the current song
+          ;; update the UI to show the new song state
           (progn (mpd-pause *mpd*)
                  (widget-value-set widget (concat "|| " name)))
+        ;; it is a new song -> stop the current playback and start to play the new song
+        ;; update the UI to show the new state
         (g-music-song-play-other widget active-pos)))
      ((equal state 'pause)
       (if (equal active-pos pos)
+          ;; resume the play of the current song
+          ;; update the UI to show the new song state
           (progn (mpd-pause *mpd*)
                  (widget-value-set widget (concat ">  " name)))
+        ;; it is a new song -> stop the current playback and start to play the new song
+        ;; update the UI to show the new state
         (g-music-song-play-other widget active-pos)))
      ((equal state 'stop)
+      ;; start to play the song at the current position
+      ;; update the UI to show the new song state
       (mpd-play *mpd* pos)
       (widget-value-set widget (concat ">  " name))))
     (widget-setup)))
