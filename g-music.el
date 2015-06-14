@@ -139,10 +139,23 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defvar g-music-mode-map
   (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "p") 'g-music-play-pause-toggle)
+    (define-key map (kbd "s") 'g-music-stop)
     (define-key map (kbd "G") 'g-music-refresh)
     (define-key map (kbd "RET") 'g-music-complete)
     map)
   "Keymap for g-music major mode.")
+
+(defun g-music-stop ()
+  "Stops the playback of the active song widget."
+  (interactive)
+  (mpd-stop *mpd*)
+  (g-music-reflect-mpd-status))
+
+(defun g-music-play-pause-toggle ()
+  "Toggles play/pause on the active song widget"
+  (interactive)
+  (g-music-song-widget-notify-handler *active-song-widget*))
 
 (defun g-music-refresh ()
   "Reinitializes the db and redraws the buffer."
@@ -213,6 +226,9 @@ So it calls fn with (\"song1\" \"http://song1\")"
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User Interface
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defvar *active-song-widget* nil
+  "The active song widget that is selected for action or played by MPD.")
+
 (defun g-music-buffer-setup ()
   "Renders the db in the *GMusic* buffer."
   (setq orig-point (point))
@@ -220,20 +236,24 @@ So it calls fn with (\"song1\" \"http://song1\")"
     (erase-buffer))
   (g-music-print-header)
 
-  (let ((have-displayable-content
-         (-any-p (lambda (pl) (g-music-db-get-playlist-content-display pl)) *db*)))
-    (-map (lambda (pl)
-            (let ((pl-content         (g-music-db-get-playlist-content pl))
-                  (pl-display-content (g-music-db-get-playlist-content-display pl))
-                  (pl-widget          (g-music-create-playlist-widget pl have-displayable-content)))
-              (when pl-display-content
-                (widget-put pl-widget
-                            :children
-                            (-map-indexed (-lambda (pos song) (g-music-create-song-widget pl-widget pos song)) pl-content)))))
-          *db*))
+  (let* ((have-displayable-content (-any-p (lambda (pl) (g-music-db-get-playlist-content-display pl)) *db*))
+         (widgets                  (-map (lambda (pl)
+                                           (let ((pl-content         (g-music-db-get-playlist-content pl))
+                                                 (pl-display-content (g-music-db-get-playlist-content-display pl))
+                                                 (pl-widget          (g-music-create-playlist-widget pl have-displayable-content)))
+                                             (when pl-display-content
+                                               (widget-put pl-widget
+                                                           :children
+                                                           (-map-indexed
+                                                            (-lambda (pos song)
+                                                              (g-music-create-song-widget pl-widget pos song))
+                                                            pl-content)))
+                                             pl-widget))
+                                         *db*)))
 
-  (widget-setup)
-  (goto-char orig-point))
+    (widget-setup)
+    (goto-char orig-point)
+    widgets))
 
 (defun g-music-print-header ()
   (widget-insert "GMusic Connection: ")
@@ -254,7 +274,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
                                 :tag playlist
                                 :help-echo "Expand this playlist"
                                 :notify (lambda (widget &rest ignore)
-                                          (g-music-playlist-widget-notify-handler (widget-get widget :tag)))
+                                          (g-music-playlist-widget-notify-handler widget))
                                 (concat "* " value))))
     ;; by default the widget should be disabled
     ;; but if we have content to display activate it
@@ -263,11 +283,12 @@ So it calls fn with (\"song1\" \"http://song1\")"
       (widget-apply widget :activate))
     widget))
 
-(defun g-music-playlist-widget-notify-handler (playlist)
+(defun g-music-playlist-widget-notify-handler (widget)
   "Retrieves the content of the given playlist, updates the cache and redraws the buffer."
-  (let ((content (g-music-db-get-playlist-content playlist))
-        (content-display (g-music-db-get-playlist-content-display playlist))
-        (url (g-music-db-get-playlist-url playlist)))
+  (let* ((playlist        (widget-get widget :tag))
+         (content         (g-music-db-get-playlist-content playlist))
+         (content-display (g-music-db-get-playlist-content-display playlist))
+         (url             (g-music-db-get-playlist-url playlist)))
     (cond
      ;;no playlist content, so request it
      ((null content)
@@ -275,17 +296,21 @@ So it calls fn with (\"song1\" \"http://song1\")"
                :parser 'buffer-string
                :success (cl-function (lambda (&key data &allow-other-keys)
                                        (g-music-extm3u-update-playlist-content playlist data)
-                                       (g-music-playlist-widget-notify-handler playlist)))))
+                                       (g-music-playlist-widget-notify-handler widget)))))
      ;;content-display is true, let's hide it
      ((not (null content-display))
       (g-music-db-clear-all-playlist-content-display *db*)
       (g-music-mpd-setup *mpd* *db*)
-      (g-music-buffer-setup))
+      (g-music-buffer-setup)
+      (setf *active-song-widget* nil))
      ;;content-display is false, let's show it
      ((null content-display)
       (g-music-db-exclusive-set-playlist-content-display playlist *db*)
       (g-music-mpd-setup *mpd* *db*)
-      (g-music-buffer-setup)))))
+      (let* ((widgets (g-music-buffer-setup))
+             (new-widget (-first (lambda (w) (equal playlist (widget-get w :tag))) widgets)))
+        (setf *active-song-widget* (car (widget-get new-widget :children))))
+      (g-music-reflect-mpd-status)))))
 
 (defun g-music-create-song-widget (parent-widget pos song)
   (-let (((name . url) song))
@@ -301,9 +326,6 @@ So it calls fn with (\"song1\" \"http://song1\")"
                    :notify (lambda (widget &rest ignore)
                              (g-music-song-widget-notify-handler widget))
                    (concat "   " name))))
-
-(defvar *active-song-widget* nil
-  "The active song widget that is selected for action or played by MPD.")
 
 (defun g-music-song-widget-notify-handler (widget)
   (let* ((mpd-status-info  (mpd-get-status *mpd*))
@@ -332,6 +354,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
      ((equal mpd-state 'stop)
       ;; start to play the song at the current position
       ;; update the UI to show the new song state
+      (g-music-song-widget-clear-marker *active-song-widget*)
       (mpd-play *mpd* actual-song-pos)
       (g-music-song-widget-set-marker widget 'play)))
     (widget-setup)
@@ -346,19 +369,20 @@ So it calls fn with (\"song1\" \"http://song1\")"
 (defun g-music-reflect-mpd-status ()
   (when *active-song-widget*
     (let* ((mpd-status       (mpd-get-status *mpd*))
+           (mpd-state        (plist-get mpd-status 'state))
            (mpd-song-pos     (plist-get mpd-status 'song))
            (active-song-pos  (widget-get *active-song-widget* :pos)))
       (with-current-buffer *g-music-buffer*
-       (when (not (equal mpd-song-pos active-song-pos))
-         (g-music-song-widget-clear-marker *active-song-widget*)
-         (let* ((active-playlist-widget (widget-get *active-song-widget* :parent))
-                (mpd-song-widget        (-first
-                                         (lambda (w) (equal (widget-get w :pos) mpd-song-pos))
-                                         (widget-get active-playlist-widget :children)))
-                (mpd-state        (plist-get mpd-status 'state)))
-           (g-music-song-widget-set-marker mpd-song-widget mpd-state)
-           (setf *active-song-widget* mpd-song-widget))
-         (widget-setup))))))
+        (when (and (not (null mpd-song-pos))
+                   (not (equal mpd-song-pos active-song-pos)))
+          (g-music-song-widget-clear-marker *active-song-widget*)
+          (let* ((active-playlist-widget (widget-get *active-song-widget* :parent))
+                 (mpd-song-widget        (-first
+                                          (lambda (w) (equal (widget-get w :pos) mpd-song-pos))
+                                          (widget-get active-playlist-widget :children))))
+            (setf *active-song-widget* mpd-song-widget)))
+        (g-music-song-widget-set-marker *active-song-widget* mpd-state)
+        (widget-setup)))))
 
 (defun g-music-song-widget-clear-marker (widget)
   (let ((widget-name (g-music-song-widget-get-name widget)))
