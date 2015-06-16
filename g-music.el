@@ -38,6 +38,9 @@
 (defvar g-music-mode-hook nil
   "List of functions to call when entering g-music mode.")
 
+(defvar *g-music-proxy-process* "GMusicProxy"
+  "The GMusicProxy process with all command line arguments.")
+
 (defvar *g-music-proxy-addr* "127.0.0.1"
   "GMusicProxy host.")
 (defvar *g-music-proxy-port* 9999
@@ -122,8 +125,9 @@
 ;; TODO: wait for the process to initialize
 ;; TODO: check if we alredy have a running instance
 (defun g-music-start-proxy ()
-  (start-process "GMusicProxy" "*GMusicProxy*" "GMusicProxy")
-  (display-buffer "*GMusicProxy*"))
+  (let ((process-name (split-string *g-music-proxy-process*)))
+    (apply 'start-process (append (list "GMusicProxy" "*GMusicProxy*") process-name))
+    (display-buffer "*GMusicProxy*")))
 
 (defun g-music-mpd-url (&optional rest)
   (g-music--get-url *g-music-mpd-addr* *g-music-mpd-port* rest))
@@ -414,6 +418,8 @@ So it calls fn with (\"song1\" \"http://song1\")"
   (setq major-mode 'g-music-mode)
   (setq mode-name "GMusic")
   (use-local-map g-music-mode-map)
+
+  (run-hooks 'g-music-mode-hook)
   
   (g-music-start-proxy)
   (g-music-db-init)
@@ -425,9 +431,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
   (goto-char 1)
   (forward-line 3)
 
-  (run-at-time t 15 'g-music-reflect-mpd-status)
-  
-  (run-hooks 'g-music-mode-hook))
+  (run-at-time t 15 'g-music-reflect-mpd-status))
 
 ;;;###autoload
 (defun g-music ()
