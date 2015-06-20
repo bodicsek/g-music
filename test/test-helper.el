@@ -1,3 +1,5 @@
+;;-*- lexical-binding: t -*-
+
 (require 'f)
 
 (defvar test-path
@@ -9,7 +11,7 @@
 (require 'g-music (f-expand "g-music.el" code-path))
 
 (defun reinit-g-music-db ()
-  (setq *db* nil))
+  (setq g-music-*db* nil))
 
 (defun get-string-from-file (filePath)
   "Return filePath's file content."

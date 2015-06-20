@@ -10,7 +10,7 @@
 (ert-deftest db-test/g-music-db-init ()
   "Should initialize the db with the default collection playlist"
   (g-music-db-init)
-  (should (not (equal (g-music-db-get-playlist "collection" *db*)
+  (should (not (equal (g-music-db-get-playlist "collection" g-music-*db*)
                       nil))))
 
 (ert-deftest db-test/g-music-db-get-playlist ()
@@ -43,9 +43,9 @@
   (let ((new-playlist (list :plname "new"
                             :plurl "http://new"
                             :content nil)))
-    (g-music-db-set-playlist new-playlist *db*)
+    (g-music-db-set-playlist new-playlist g-music-*db*)
     (should (equal new-playlist
-                   (g-music-db-get-playlist "new" *db*)))))
+                   (g-music-db-get-playlist "new" g-music-*db*)))))
 
 (ert-deftest db-test/g-music-db-get-playlist-name ()
   "Should return the name of the given playlist"
@@ -194,7 +194,7 @@ http://192.168.2.115:9999/get_playlist?id=df2f1c84-3bdb-4420-a656-65e21d9ea3b3
 http://192.168.2.115:9999/get_playlist?id=594dc46c-77df-4d83-beae-3f3043ad3133"))
     (g-music-extm3u-update-playlists data)
     (should (equal '("Jazz" "Jazz bonus set 1")
-                   (-map 'g-music-db-get-playlist-name *db*)))))
+                   (-map 'g-music-db-get-playlist-name g-music-*db*)))))
 
 (ert-deftest extm3u-test/g-music-extm3u-update-playlist-content ()
   "Should update the given playlist's content based on the extm3u data."

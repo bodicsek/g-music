@@ -4,8 +4,10 @@
 
 (package "g-music" "0.0.1" "Support for google music all access")
 (files "*.el")
-(depends-on "request")
+(depends-on "names")
+(depends-on "s")
 (depends-on "dash")
+(depends-on "request")
 (depends-on "libmpdee")
 
 ;; (package-file "g-music.el")
