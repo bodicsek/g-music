@@ -397,22 +397,29 @@ So it calls fn with (\"song1\" \"http://song1\")"
     (if (widget-at)
         (widget-button-press (point))
       (message "Nothing to do.")))
-  
-  ) ;;end of define-namespace g-music-
+
+  (defun find-active-widget ()
+    "If the active song widget is not null moves point to it."
+    (interactive)
+    (when *active-song-widget*
+      (goto-char (point-min))
+      (while (not (or (eobp)
+                      (equal *active-song-widget* (widget-at))))
+        (forward-line))))
+) ;;end of define-namespace g-music-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Major mode setup
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (defvar g-music-mode-map
   (let ((mode-map (make-sparse-keymap)))
-    (define-key map (kbd "p") 'g-music-play-pause-toggle)
-    (define-key map (kbd "s") 'g-music-stop)
-    (define-key map (kbd "G") 'g-music-refresh)
-    (define-key map (kbd "RET") 'g-music-complete)
+    (define-key mode-map (kbd "p") 'g-music-play-pause-toggle)
+    (define-key mode-map (kbd "s") 'g-music-stop)
+    (define-key mode-map (kbd "G") 'g-music-refresh)
+    (define-key mode-map (kbd "g") 'g-music-find-active-widget)
+    (define-key mode-map (kbd "RET") 'g-music-complete)
     mode-map)
   "Keymap for g-music major mode.")
-
 
 (defun g-music-mode ()
   "Major mode for listening music from google music."
@@ -447,4 +454,3 @@ So it calls fn with (\"song1\" \"http://song1\")"
       (g-music-mode)))
 
 (provide 'g-music)
-
