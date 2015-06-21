@@ -1,0 +1,7 @@
+/.+(defun \(.+\) (/\1/
+/.+(defun \(.+\) (/g-music-\1/
+/.+(defvar \(.+\) /\1/
+/.+(defvar \(.+\) /g-music-\1/
+/.+(defconst \(.+\) /\1/
+/.+(defconst \(.+\) /g-music-\1/
+

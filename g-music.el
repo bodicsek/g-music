@@ -405,12 +405,12 @@ So it calls fn with (\"song1\" \"http://song1\")"
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar g-music-mode-map
-  (let ((map (make-sparse-keymap)))
+  (let ((mode-map (make-sparse-keymap)))
     (define-key map (kbd "p") 'g-music-play-pause-toggle)
     (define-key map (kbd "s") 'g-music-stop)
     (define-key map (kbd "G") 'g-music-refresh)
     (define-key map (kbd "RET") 'g-music-complete)
-    map)
+    mode-map)
   "Keymap for g-music major mode.")
 
 

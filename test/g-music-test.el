@@ -1,7 +1,6 @@
 ;;-*- lexical-binding: t -*-
 
 (require 'cl)
-(require 'cl-lib)
 (require 'el-mock)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
