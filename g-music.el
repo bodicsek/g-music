@@ -182,13 +182,15 @@ So it calls fn with (\"song1\" \"http://song1\")"
 (defvar *proxy* nil
   "Signs with t if the proxy is up and running.")
 
-;; TODO: make the proxy command configurable
 ;; TODO: wait for the process to initialize
-;; TODO: check if we alredy have a running instance
 (defun start-proxy ()
   (let ((process-name (split-string g-music-proxy-process)))
-    (apply 'start-process (append (list "GMusicProxy" "*GMusicProxy*") process-name))
-    (display-buffer "*GMusicProxy*")))
+    (when (and (not *proxy*)
+               (or (file-exists-p (car process-name))
+                   (executable-find (car process-name))))
+      (apply 'start-process (append (list "GMusicProxy" "*GMusicProxy*") process-name))
+      (display-buffer "*GMusicProxy*")
+      (setq *proxy* t))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; User Interface
