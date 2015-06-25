@@ -35,24 +35,24 @@
   "Face for GMusic playlist content."
   :group 'g-music-faces)
 
-(defvar g-music-mode-hook nil
-  "List of functions to call when entering g-music mode.")
-
-(defvar *g-music-proxy-process* "GMusicProxy"
+(defvar g-music-proxy-process "GMusicProxy"
   "The GMusicProxy process with all command line arguments.")
 
-(defvar *g-music-proxy-addr* "127.0.0.1"
+(defvar g-music-proxy-host "127.0.0.1"
   "GMusicProxy host.")
-(defvar *g-music-proxy-port* 9999
+(defvar g-music-proxy-port 9999
   "GMusicProxy port.")
 
-(defvar *g-music-mpd-addr* "127.0.0.1"
+(defvar g-music-mpd-host "127.0.0.1"
   "MPD host.")
-(defvar *g-music-mpd-port* 6600
+(defvar g-music-mpd-port 6600
   "MPD port.")
 
-(defconst *g-music-buffer* "*GMusic*"
+(defconst g-music-buffer "*GMusic*"
   "GMusic buffer name.")
+
+(defvar g-music-mode-hook nil
+  "List of functions to call when entering g-music mode.")
 
 (define-namespace g-music-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -72,7 +72,7 @@
     "Initializes the g-music db with the default entries."
     (setq *db* (list (db-create-playlist
                       "collection"
-                      (-get-url *g-music-proxy-addr* *g-music-proxy-port* "/get_collection")))))
+                      (-get-url g-music-proxy-host g-music-proxy-port "/get_collection")))))
 
   (defun db-create-playlist (name url)
     (list :plname name :plurl url :content nil :content-display nil))
@@ -117,15 +117,15 @@
   ;; TODO: wait for the process to initialize
   ;; TODO: check if we alredy have a running instance
   (defun start-proxy ()
-    (let ((process-name (split-string *g-music-proxy-process*)))
+    (let ((process-name (split-string g-music-proxy-process)))
       (apply 'start-process (append (list "GMusicProxy" "*GMusicProxy*") process-name))
       (display-buffer "*GMusicProxy*")))
 
   (defun mpd-url (&optional rest)
-    (-get-url *g-music-mpd-addr* *g-music-mpd-port* rest))
+    (-get-url g-music-mpd-host g-music-mpd-port rest))
 
   (defun proxy-url (&optional rest)
-    (-get-url *g-music-proxy-addr* *g-music-proxy-port* rest))
+    (-get-url g-music-proxy-host g-music-proxy-port rest))
 
   (defun -get-url (host port &optional rest)
     (concat "http://" host ":" (number-to-string port) rest))
@@ -172,7 +172,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
 
   (defun mpd-init ()
     "Creates a new MPD connection and clears the default MPD playlist."
-    (setf *mpd* (mpd-conn-new *g-music-mpd-addr* *g-music-mpd-port*))
+    (setf *mpd* (mpd-conn-new g-music-mpd-host g-music-mpd-port))
     (mpd-clear-playlist *mpd*))
 
   (defun mpd-setup (mpd-conn db)
@@ -337,7 +337,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
                (mpd-state        (plist-get mpd-status 'state))
                (mpd-song-pos     (plist-get mpd-status 'song))
                (active-song-pos  (widget-get *active-song-widget* :pos)))
-          (with-current-buffer *g-music-buffer*
+          (with-current-buffer g-music-buffer
             (when (and (not (null mpd-song-pos))
                        (not (equal mpd-song-pos active-song-pos)))
               (song-widget-clear-marker *active-song-widget*)
@@ -449,7 +449,7 @@ So it calls fn with (\"song1\" \"http://song1\")"
 (defun g-music ()
   "Switch to *GMusic* buffer and load playlists."
   (interactive)
-  (switch-to-buffer *g-music-buffer*)
+  (switch-to-buffer g-music-buffer)
   (if (not (eq major-mode 'g-music-mode))
       (g-music-mode)))
 
